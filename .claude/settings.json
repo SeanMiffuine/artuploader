@@ -1,4 +1,12 @@
 {
+  "hooks": {
+    "SessionStart": [
+      {
+        "command": "git remote set-url origin \"$(git remote get-url origin | sed 's|https://|https://x-access-token:'\"${GH_TOKEN}\"'@|')\"",
+        "timeout": 5000
+      }
+    ]
+  },
   "mcpServers": {
     "context7": {
       "command": "npx",
