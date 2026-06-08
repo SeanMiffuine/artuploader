@@ -6,7 +6,7 @@ Artists create work and want to share it across multiple social media platforms 
 
 ## Goal
 
-A lightweight CLI tool that watches a Google Drive folder for new artwork, auto-generates platform-specific captions, and uploads to all configured social media platforms on a schedule — with zero daemons or background processes. It runs via system cron and exits after each cycle.
+A lightweight tool with a simple localhost web UI that watches a Google Drive folder for new artwork, auto-generates platform-specific captions, and uploads to all configured social media platforms on a schedule. The posting engine runs via system cron (no daemons), and the web dashboard is available on-demand for queue management and configuration.
 
 ## Tech Stack
 
@@ -18,7 +18,7 @@ A lightweight CLI tool that watches a Google Drive folder for new artwork, auto-
 | Database | **SQLite** | Tracks queue state, post history, platform status |
 | Caption Generation | **Claude API** | Generates platform-tailored captions from image + metadata |
 | File Storage | **Google Drive (local sync)** | Artist drops files into a synced folder on disk |
-| CLI Framework | **inquirer** or **prompts** | Interactive terminal UI for configuration and queue management |
+| Web UI | **Express + vanilla HTML/JS** | Localhost dashboard for queue management, settings, and caption editing |
 
 ## Architecture Overview
 
@@ -83,30 +83,54 @@ The cron job triggers this pipeline once per cycle. Each run processes **one ima
   - Tag/hashtag formatting
 - Reports success/failure per platform back to the queue manager
 
-### 5. CLI Interface
-- Not a persistent UI — just commands you run when you need them
-- Built with an interactive terminal prompt library
+### 5. Web Dashboard (localhost)
+- Simple Express server serving a single-page dashboard at `http://localhost:3000`
+- No framework — vanilla HTML, CSS, and JS (or Alpine.js for minimal reactivity)
+- Express JSON API routes power the frontend; the same routes the cron engine uses
+- Start with `artuploader ui` or `node index.js ui` — opens in your default browser
 
-## CLI Commands
+#### Dashboard Pages/Views
+
+| View | What It Shows |
+|------|---------------|
+| **Queue** | Thumbnails of upcoming images in order. Drag to reorder. Buttons: Force Post, Skip, Preview Captions. |
+| **Preview/Edit** | Click an image to see generated captions per platform. Edit any caption inline. Append/prepend custom text. |
+| **History** | Grid of posted images with timestamps, platform status icons (✓/✗), and captions used. |
+| **Settings** | Folder path, enabled platforms, posting schedule, caption preferences (tone, default hashtags, appended text), per-platform settings. |
+| **Platform Login** | Status indicators for each platform session. "Login" button opens a Playwright browser window for you to log in. |
+
+#### API Routes (Express)
+
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/api/queue` | GET | List queued images with thumbnails and status |
+| `/api/queue/:id/force` | POST | Force-post a specific image now |
+| `/api/queue/:id/skip` | POST | Skip an image |
+| `/api/queue/reorder` | POST | Update queue order |
+| `/api/queue/:id/captions` | GET | Get generated captions for an image |
+| `/api/queue/:id/captions` | PUT | Edit/override captions |
+| `/api/history` | GET | List posted images with platform results |
+| `/api/history/:id/retry` | POST | Retry failed platforms for an image |
+| `/api/settings` | GET/PUT | Read/update configuration |
+| `/api/platforms` | GET | Platform login status |
+| `/api/platforms/:name/login` | POST | Trigger Playwright login flow |
+| `/api/images/:id/thumbnail` | GET | Serve image thumbnail |
+
+## CLI Commands (minimal)
+
+Only two commands remain as CLI — everything else moves to the web UI:
 
 | Command | Description |
 |---------|-------------|
 | `artuploader run` | Process next image in queue — generate captions, upload to all platforms. This is what cron calls. |
-| `artuploader force` | Immediately post the next image in the queue, regardless of schedule. |
-| `artuploader status` | Show current queue: upcoming, posted, failed. |
-| `artuploader preview` | Show the next image and its generated captions for each platform before posting. |
-| `artuploader edit <id>` | Edit/override the generated caption for a specific queued image. |
-| `artuploader skip <id>` | Skip an image — move it out of the queue without posting. |
-| `artuploader retry <id>` | Retry a failed post for a specific image (all failed platforms or a specific one). |
-| `artuploader login <platform>` | Interactive login — opens a browser so you can log into a platform. Saves the session for future runs. |
-| `artuploader config` | Interactive setup — set folder path, schedule, enabled platforms, caption preferences. |
-| `artuploader history` | Show full post history with timestamps and platform results. |
+| `artuploader ui` | Start the localhost web dashboard on port 3000. |
 
 ## User Stories
 
 ### Initial Setup
-- **As an artist**, I want to run `artuploader config` and be guided through setup (folder path, which platforms, posting schedule, Claude API key) so I can get started quickly.
-- **As an artist**, I want to run `artuploader login instagram` and have a browser window open where I log in once, so the tool can reuse my session for future uploads.
+- **As an artist**, I want to run `artuploader ui`, open the Settings page, and be guided through setup (folder path, which platforms, posting schedule, Claude API key) so I can get started quickly.
+- **As an artist**, I want to click "Login" next to a platform on the dashboard and have a browser window open where I log in once, so the tool can reuse my session for future uploads.
+- **As an artist**, I want to see the login status of each platform on the dashboard so I know which ones are connected.
 - **As an artist**, I want to add a single cron line and never think about scheduling again.
 
 ### Day-to-Day Posting
@@ -116,29 +140,28 @@ The cron job triggers this pipeline once per cycle. Each run processes **one ima
 - **As an artist**, I want the cron job to post one piece at a time on my configured schedule so my feed has a consistent posting cadence rather than dumping everything at once.
 
 ### Queue Management
-- **As an artist**, I want to run `artuploader status` to see what's coming up next, what's already been posted, and what failed so I have full visibility into my queue.
-- **As an artist**, I want to run `artuploader preview` to see the next image and its generated captions before it goes live, so I can catch anything weird.
-- **As an artist**, I want to edit a generated caption if the AI got something wrong or I want to add context the AI couldn't know.
-- **As an artist**, I want to skip an image in the queue (e.g., a WIP I accidentally saved to the folder) without deleting the file.
-- **As an artist**, I want to reorder or prioritize a specific image in the queue if I want something posted sooner.
+- **As an artist**, I want to open the dashboard and see a visual queue of upcoming images as thumbnails, so I have full visibility at a glance.
+- **As an artist**, I want to click an image in the queue to preview its generated captions for each platform before it goes live, so I can catch anything weird.
+- **As an artist**, I want to edit a generated caption inline on the dashboard if the AI got something wrong or I want to add context the AI couldn't know.
+- **As an artist**, I want to click a "Skip" button on an image in the queue (e.g., a WIP I accidentally saved to the folder) to remove it without deleting the file.
+- **As an artist**, I want to drag and drop images in the queue to reorder them if I want something posted sooner.
 
 ### Force Posting
-- **As an artist**, I want to run `artuploader force` to immediately post the next image in the queue right now, bypassing the schedule, for time-sensitive posts.
-- **As an artist**, I want to run `artuploader force <id>` to immediately post a specific image from anywhere in the queue, not just the next one.
+- **As an artist**, I want to click a "Post Now" button on any image in the queue to immediately post it, bypassing the schedule, for time-sensitive posts.
 
 ### Failure Handling
 - **As an artist**, I want the tool to retry only the platforms that failed for a given image, not re-post to platforms that succeeded, so I don't get duplicate posts.
-- **As an artist**, I want to see clear error messages when a post fails (e.g., "Instagram: session expired, run `artuploader login instagram`") so I know how to fix it.
-- **As an artist**, I want to run `artuploader retry <id>` to retry a failed post manually after fixing the issue.
+- **As an artist**, I want to see clear error indicators on the dashboard when a post fails (e.g., a red ✗ next to Instagram with "session expired") so I know what went wrong.
+- **As an artist**, I want to click a "Retry" button on a failed post to retry it after fixing the issue (e.g., re-logging in).
 
 ### History and Tracking
-- **As an artist**, I want to see a full history of what was posted, when, and to which platforms so I can track my posting consistency.
-- **As an artist**, I want to know if a platform login session has expired before the cron job runs and fails silently.
+- **As an artist**, I want a History page showing a grid of posted images with timestamps and per-platform success/failure icons so I can track my posting consistency.
+- **As an artist**, I want to see on the dashboard if a platform login session has expired before the cron job runs and fails silently.
 
 ### Configuration
-- **As an artist**, I want to configure my posting schedule (e.g., "daily at 10am", "every 12 hours", "Mon/Wed/Fri at 6pm") through an interactive prompt.
-- **As an artist**, I want to enable or disable specific platforms without losing my login sessions, so I can temporarily stop posting to one platform.
-- **As an artist**, I want to set global caption preferences (tone, default hashtags, appended text) that apply to all generated captions.
+- **As an artist**, I want to configure my posting schedule (e.g., "daily at 10am", "every 12 hours", "Mon/Wed/Fri at 6pm") through the Settings page.
+- **As an artist**, I want to enable or disable specific platforms with a toggle, without losing my login sessions, so I can temporarily stop posting to one platform.
+- **As an artist**, I want to set global caption preferences (tone, default hashtags, appended text) on the Settings page that apply to all generated captions.
 - **As an artist**, I want to configure per-platform settings (e.g., always add "Commission info in bio" to Instagram posts).
 
 ## Cron Setup
@@ -164,8 +187,8 @@ If there's nothing to post, it exits silently. If a post partially fails, it log
 
 ```
 artuploader/
-├── index.js              # CLI entry point, command routing
-├── config.js             # Config loading/saving, interactive setup
+├── index.js              # CLI entry point (run / ui commands)
+├── server.js             # Express server — API routes + serves static UI
 ├── scanner.js            # Folder scanning, new file detection
 ├── queue.js              # SQLite queue operations
 ├── caption.js            # Claude API caption generation
@@ -177,6 +200,10 @@ artuploader/
 │   └── pixiv.js          # Pixiv automation
 ├── browser.js            # Playwright session management (login, saved contexts)
 ├── db.js                 # SQLite setup, migrations, queries
+├── public/               # Static web UI (served by Express)
+│   ├── index.html        # Single-page dashboard
+│   ├── style.css         # Styles
+│   └── app.js            # Frontend JS (vanilla or Alpine.js)
 ├── package.json
 ├── .artuploader/         # Created at runtime in user home dir
 │   ├── config.json       # User configuration
