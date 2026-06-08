@@ -1,4 +1,12 @@
 {
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/SeanMiffuine/artuploader.git 2>/dev/null || true"
+      }
+    ]
+  },
   "mcpServers": {
     "context7": {
       "command": "npx",
