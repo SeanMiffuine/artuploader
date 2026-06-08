@@ -55,7 +55,10 @@ The cron job triggers this pipeline once per cycle. Each run processes **one ima
 - Watches a configurable local directory (Google Drive sync folder)
 - Detects new images by comparing folder contents against SQLite records
 - Queues new images ordered by file creation/modified time (oldest first)
-- Supports common formats: PNG, JPG, JPEG, WEBP, PSD (converted), TIFF
+- Supports common formats: PNG, JPG, JPEG, WEBP
+- Supports video formats: MP4, MOV, GIF
+- **Single files** in the folder root = single-image/video posts
+- **Subfolders** = multi-image carousel posts (all images inside a subfolder are grouped as one post, ordered by filename)
 
 ### 2. Queue Manager (SQLite)
 - **images** table: file path, hash, queue position, status (queued/posted/failed/skipped), added timestamp
@@ -76,11 +79,13 @@ The cron job triggers this pipeline once per cycle. Each run processes **one ima
 ### 4. Platform Uploader (Playwright)
 - Each platform has its own uploader module with the browser automation flow
 - Uses persistent browser contexts (saved login sessions) — no re-auth each run
-- Includes human-like delays between actions to avoid bot detection
+- **Anti-detection delays**: randomized wait times between actions (1-3s jitter per click/type), randomized platform posting order each run, occasional longer pauses to mimic human behavior
 - Handles platform-specific requirements:
   - Image resizing/cropping if needed
   - Character limits
   - Tag/hashtag formatting
+  - Video duration/format limits per platform
+  - Multi-image carousel support (Instagram carousels, Twitter multi-image, etc.)
 - Reports success/failure per platform back to the queue manager
 
 ### 5. Web Dashboard (localhost)
@@ -158,6 +163,16 @@ Only two commands remain as CLI — everything else moves to the web UI:
 - **As an artist**, I want a History page showing a grid of posted images with timestamps and per-platform success/failure icons so I can track my posting consistency.
 - **As an artist**, I want to see on the dashboard if a platform login session has expired before the cron job runs and fails silently.
 
+### Multi-Image Posts
+- **As an artist**, I want to create a subfolder in my Google Drive folder with multiple images inside, and have the tool treat them as a single carousel/multi-image post.
+- **As an artist**, I want the images in a subfolder to be posted in filename order (e.g., `01.png`, `02.png`, `03.png`) so I control the carousel sequence.
+- **As an artist**, I want the tool to handle platform limits automatically (e.g., Instagram allows 10 images per carousel, Twitter allows 4) — posting the max allowed and warning me if images were truncated.
+
+### Video Posts
+- **As an artist**, I want to drop a video file (MP4, MOV, GIF) into the folder and have it posted to all platforms just like an image.
+- **As an artist**, I want the tool to warn me on the dashboard if a video exceeds a platform's duration or file size limit before attempting to post.
+- **As an artist**, I want video posts to get auto-generated captions just like image posts.
+
 ### Configuration
 - **As an artist**, I want to configure my posting schedule (e.g., "daily at 10am", "every 12 hours", "Mon/Wed/Fri at 6pm") through the Settings page.
 - **As an artist**, I want to enable or disable specific platforms with a toggle, without losing my login sessions, so I can temporarily stop posting to one platform.
@@ -213,10 +228,10 @@ artuploader/
 └── DESIGN.md
 ```
 
-## Open Questions
+## Decisions
 
-1. **Image format handling** — Should we auto-convert formats like PSD/TIFF, or require the artist to export as PNG/JPG before dropping in the folder?
-2. **Multi-image posts** — Some platforms support carousel/multi-image posts. Should we support grouping images (e.g., by subfolder or naming convention)?
-3. **Video support** — Some artists post timelapses or animations. Worth supporting in v1, or defer?
-4. **Notifications** — Should the tool notify the artist on success/failure (e.g., desktop notification, email)? Or is checking `artuploader status` enough?
-5. **Rate limiting** — How many platforms can we realistically post to in one cron cycle before hitting timing/detection issues?
+1. **Image formats** — PNG, JPG, JPEG, WEBP only. No PSD/TIFF conversion. Non-supported files show a warning badge in the queue.
+2. **Multi-image posts** — Supported via subfolders. A subfolder in the watch directory = one carousel post. Images ordered by filename.
+3. **Video support** — Included in v1. MP4, MOV, GIF supported. Dashboard warns if a video exceeds platform limits before posting.
+4. **Notifications** — Not in v1. The dashboard history page is sufficient.
+5. **Anti-detection** — Randomized delays (1-3s jitter per action), randomized platform order each run, occasional longer pauses. Sequential posting to one platform at a time.
